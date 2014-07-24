@@ -42,7 +42,7 @@ class phpBB(object):
     notes_url = 'mcp.php?i=notes&mode=user_notes&u=%i'
     details_url = 'mcp.php?i=main&mode=post_details&f=%i&p=%i'
 
-    search_type = ['newposts', 'active_topics', 'unreadposts', 'unanswered', 'egoposts']
+    search_type = ['newposts', 'active_topics', 'unreadposts', 'unanswered', 'egosearch']
 
     user_agent = 'Mozilla/5.0 (X11; Linux x86_64; rv:14.0) Gecko/20100101 Firefox/14.0.1'
 
