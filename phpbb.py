@@ -18,25 +18,28 @@
 import re
 import codecs
 import mimetypes
-import http.cookiejar
+import cookielib
 from io import BytesIO
 from time import sleep
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse, urlencode, urljoin
-from urllib.request import build_opener, install_opener
-from urllib.request import Request, HTTPCookieProcessor
-from urllib.error import HTTPError
+from urlparse import urlparse, urljoin
+from urllib import urlencode
+from urllib2 import build_opener, install_opener
+from urllib2 import Request, HTTPCookieProcessor
+from urllib2 import HTTPError
 
 
 class phpBB(object):
 
     login_url = 'ucp.php?mode=login'
+    topic_url = 'viewtopic.php?f=%s&t=%s'
     post_url = 'viewtopic.php?f=%s&t=%i&p=%i#p%i'
     reply_url = 'posting.php?mode=reply&f=%i&t=%i'
     delete_url = 'posting.php?mode=delete&f=%i&p=%i'
     userpost_url = 'search.php?st=0&sk=t&sd=d&sr=posts&author_id=%i&start=%i'
     profile_url = 'memberlist.php?mode=viewprofile&u=%i'
     search_url = 'search.php?st=0&sk=t&sd=d&sr=posts&search_id=%s&start=%i'
+    own_topics_url = 'search.php?st=0&sk=t&sd=d&sr=topics&search_id=egosearch'
     mcp_url = 'mcp.php?i=%i'
     member_url = 'memberlist.php?sk=c&sd=d&start=%i'
     notes_url = 'mcp.php?i=notes&mode=user_notes&u=%i'
@@ -54,7 +57,7 @@ class phpBB(object):
 
     def __init__(self, host):
         self.host = host
-        self.jar = http.cookiejar.CookieJar()
+        self.jar = cookielib.CookieJar()
         self.opener = build_opener(HTTPCookieProcessor(self.jar))
         install_opener(self.opener)
 
@@ -66,15 +69,15 @@ class phpBB(object):
             boundary = '----------b0uNd@ry_$'
 
         for name, value in getattr(fields, 'items')():
-            body.write(bytes('--%s\r\n' % boundary, 'utf-8'))
+            body.write(bytes('--%s\r\n' % boundary))
             if isinstance(value, tuple):
                 file, data = value
                 writer(body).write('Content-Disposition: form-data; name="%s"; filename="%s"\r\n' % (name, file))
-                body.write(bytes('Content-Type: %s\r\n\r\n' % (self._get_content_type(file)), 'utf-8'))
+                body.write(bytes('Content-Type: %s\r\n\r\n' % (self._get_content_type(file))))
             else:
                 data = value
                 writer(body).write('Content-Disposition: form-data; name="%s"\r\n' % (name))
-                body.write(bytes('Content-Type: text/plain\r\n\r\n', 'utf-8'))
+                body.write(bytes('Content-Type: text/plain\r\n\r\n'))
 
             if isinstance(data, int):
                 data = str(data)
@@ -84,9 +87,9 @@ class phpBB(object):
             else:
                 body.write(data)
 
-            body.write(bytes('\r\n', 'utf-8'))
+            body.write(bytes('\r\n'))
 
-        body.write(bytes('--%s--\r\n' % (boundary), 'utf-8'))
+        body.write(bytes('--%s--\r\n' % (boundary)))
 
         content_type = 'multipart/form-data; boundary=%s' % boundary
         return body.getvalue(), content_type
@@ -101,10 +104,10 @@ class phpBB(object):
             headers.update(extra_headers)
 
         if encode:
-            data = bytes(urlencode(query), 'utf-8')
+            data = bytes(urlencode(query))
         else:
             if not isinstance(query, bytes):
-                data = bytes(query, 'utf-8')
+                data = bytes(query)
             else:
                 data = query
 
@@ -155,6 +158,25 @@ class phpBB(object):
                 if count > 0 and len(out) >= count:
                     break
         return out
+
+    def _get_topics(self, url, count=0):
+        out = []
+        res = self._get_html(url).find_all("dl", "icon")[1:]
+        for dl in res:
+            href = dl.dt.a['href']
+            read = "topic_read_mine" in dl['style']
+            o = urlparse(href)
+            if o.query:
+                d = dict([part.split('=') for part in o[4].split('&')])
+                out.append(d)
+                for sub in out:
+                    for key in sub:
+                        if("view"!=key):
+                            sub[key] = int(sub[key])
+                if count > 0 and len(out) >= count:
+                    break
+        return out
+
 
     def _get_users(self, url, count=0):
         out = []
@@ -224,7 +246,7 @@ class phpBB(object):
         if self.jar != None:
             for cookie in self.jar:
                 if re.search('phpbb3_.*_u', cookie.name) and cookie.value:
-                    return True
+                    return cookie.value
         return False
 
     def getUsername(self, user_id):
@@ -234,7 +256,14 @@ class phpBB(object):
 
     def showPosts(self, post_list):
         for post in post_list:
-            print((self.host + self.post_url % (post['f'], post['t'], post['p'], post['p'])))
+            print(self.host + self.post_url % (post['f'], post['t'], post['p'], post['p']))
+
+    def showTopics(self, topic_list):
+        for topic in topic_list:
+            print(self.host + self.topic_url % (topic['f'], topic['t']))
+
+    def retTopic(self, topic):
+      return self.host + self.topic_url % (topic['f'], topic['t'])
 
     def setUserAgent(self, agent):
         self.user_agent = agent
@@ -271,6 +300,10 @@ class phpBB(object):
             posts.extend(post_list)
             start += 10
         return posts
+
+    def getOwnTopics(self, max_count):
+        topics_list = self._get_topics(urljoin(self.host, self.own_topics_url), max_count)
+        return topics_list
 
     def deletePosts(self, post_list, callback=None):
         for post in post_list:
